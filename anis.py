@@ -138,8 +138,8 @@ with col_input:
         # 1. 貨號與客人
         c1, c2 = st.columns(2)
         with c1:
-            input_mode = st.radio("模式", ["輸入enter", "選舊的lama"], horizontal=True, label_visibility="collapsed")
-            if input_mode == "選舊的lama" and st.session_state.history_items:
+            input_mode = st.radio("模式", ["enter baru", "enter lama"], horizontal=True, label_visibility="collapsed")
+            if input_mode == "enter lama" and st.session_state.history_items:
                 item_code = st.selectbox("貨號 / Kode", st.session_state.history_items)
             else:
                 item_code = st.text_input("貨號 / Kode", placeholder="A01")
