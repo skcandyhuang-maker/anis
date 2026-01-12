@@ -135,20 +135,28 @@ with col_input:
     # 把它包在一個容器裡，增加視覺區隔
     with st.container(border=True):
         
-        # 1. 貨號與客人
+       # 1. 貨號與客人
+        st.write("🔧 **貨號模式 / Mode Kode**")
+        input_mode = st.radio(
+            "模式選擇", 
+            ["輸入新貨號 / Enter Baru", "選擇舊貨號 / Enter Lama"], 
+            horizontal=True, 
+            label_visibility="collapsed", # 隱藏標題，節省空間
+            key="mode_selection"
+        )
+        
         c1, c2 = st.columns(2)
+        
         with c1:
-            input_mode = st.radio("模式", ["enter baru", "enter lama"], horizontal=True, label_visibility="collapsed")
-            if input_mode == "enter lama" and st.session_state.history_items:
+            # 左邊：貨號輸入
+            if "Enter Lama" in input_mode and st.session_state.history_items:
                 item_code = st.selectbox("貨號 / Kode", st.session_state.history_items)
             else:
                 item_code = st.text_input("貨號 / Kode", placeholder="A01")
+                
         with c2:
-            st.write("") # 排版用
-            st.write("") 
+            # 右邊：客人名稱 (現在不需要空行了，會自動對齊)
             customer_name = st.text_input("客人 / Nama", placeholder="Judy")
-
-        st.markdown("---")
 
         # 2. 顏色 (Pills)
         st.write("🎨 **顏色 / Warna**")
