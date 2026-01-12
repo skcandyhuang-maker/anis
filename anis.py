@@ -152,11 +152,11 @@ with col_input:
 
         # 2. 顏色 (Pills)
         st.write("🎨 **顏色 / Warna**")
-        color_options = DEFAULT_COLORS + st.session_state.history_colors + ["➕自填"]
+        color_options = DEFAULT_COLORS + st.session_state.history_colors + ["➕自填other"]
         selected_color_pill = st.pills("Color", color_options, selection_mode="single", key="color_pill", label_visibility="collapsed")
         
         final_color = None
-        if selected_color_pill == "➕自填":
+        if selected_color_pill == "➕自填other":
             final_color = st.text_input("輸入新顏色 / Warna Baru")
         else:
             final_color = selected_color_pill
@@ -165,11 +165,11 @@ with col_input:
 
         # 3. 尺寸 (Pills)
         st.write("📏 **尺寸 / Ukuran**")
-        size_options = DEFAULT_SIZES + st.session_state.history_sizes + ["➕自填"]
+        size_options = DEFAULT_SIZES + st.session_state.history_sizes + ["➕自填other"]
         selected_size_pill = st.pills("Size", size_options, selection_mode="single", key="size_pill", label_visibility="collapsed")
         
         final_size = None
-        if selected_size_pill == "➕自填":
+        if selected_size_pill == "➕自填other":
             final_size = st.text_input("輸入新尺寸 / Ukuran Baru")
         else:
             final_size = selected_size_pill
