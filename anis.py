@@ -152,11 +152,11 @@ with col_input:
             if "Enter Lama" in input_mode and st.session_state.history_items:
                 item_code = st.selectbox("貨號 / Kode", st.session_state.history_items)
             else:
-                item_code = st.text_input("貨號 / Kode", placeholder="A01")
+                item_code = st.text_input("貨號 / Kode", placeholder="9152")
                 
         with c2:
             # 右邊：客人名稱 (現在不需要空行了，會自動對齊)
-            customer_name = st.text_input("客人 / Nama", placeholder="Judy")
+            customer_name = st.text_input("客人 / Nama", placeholder="Anis")
 
         # 2. 顏色 (Pills)
         st.write("🎨 **顏色 / Warna**")
