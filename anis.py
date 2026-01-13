@@ -1,211 +1,312 @@
 import streamlit as st
 import pandas as pd
 import os
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 
-# --- 設定頁面 (寬版模式) ---
-st.set_page_config(page_title="直播點貨系統 / Sistem Stok Live", layout="wide")
+# --- 設定頁面 ---
+st.set_page_config(page_title="TokoMamanis POS Pro", layout="wide")
 
-# --- CSS 優化 (按鈕圓潤 + 表格標題醒目) ---
+# --- CSS 美化工程 (儀表板風格) ---
 st.markdown("""
 <style>
+    /* 全域字體優化 */
+    .stApp { font-family: 'Heiti TC', sans-serif; }
+    
+    /* 1. 頂部數據卡片風格 */
+    div[data-testid="stMetric"] {
+        background-color: #1E1E1E;
+        padding: 15px;
+        border-radius: 10px;
+        border: 1px solid #333;
+        text-align: center;
+        box-shadow: 2px 2px 5px rgba(0,0,0,0.3);
+    }
+    div[data-testid="stMetricLabel"] { font-size: 0.9rem; color: #aaa; }
+    div[data-testid="stMetricValue"] { font-size: 1.6rem; color: #4FC3F7; font-weight: bold; }
+    
+    /* 2. 按鈕美化 (Pills) */
     .stPills button {
         border-radius: 20px !important;
-        font-weight: bold !important;
-        border: 1px solid #ddd !important;
+        font-weight: 600 !important;
+        border: 1px solid #444 !important;
+        padding: 4px 12px !important;
+        font-size: 0.9rem !important;
     }
-    /* 讓左側清單標題更明顯 */
-    h3 {
-        color: #2e86de; 
+    
+    /* 3. 輸入面板邊框 */
+    div[data-testid="stVerticalBlockBorderWrapper"] {
+        border-radius: 12px;
+        padding: 10px;
     }
+
+    /* 4. 表格標題顏色 */
+    h3 { color: #4FC3F7 !important; font-size: 1.3rem !important; margin-bottom: 0px !important; }
+    
+    /* 5. 修正頂部間距，消滅空白 */
+    .block-container { padding-top: 1.5rem; padding-bottom: 3rem; }
+    div[data-testid="stVerticalBlock"] { gap: 0.5rem; }
+    
+    /* 價格表樣式 */
+    div[data-testid="stDataEditor"] { border: 1px solid #444; border-radius: 8px; }
 </style>
 """, unsafe_allow_html=True)
 
+# --- 台灣時間函數 ---
+def get_taiwan_time():
+    tz = timezone(timedelta(hours=8))
+    return datetime.now(tz).strftime("%H:%M:%S")
+
 # --- 初始化 Session State ---
-if 'orders' not in st.session_state:
-    st.session_state.orders = []
-if 'history_items' not in st.session_state:
-    st.session_state.history_items = [] 
-if 'history_colors' not in st.session_state:
-    st.session_state.history_colors = [] 
-if 'history_sizes' not in st.session_state:
-    st.session_state.history_sizes = [] 
+if 'orders' not in st.session_state: st.session_state.orders = []
+for key in ['history_items', 'history_colors', 'history_sizes']:
+    if key not in st.session_state: st.session_state[key] = []
+if 'price_map' not in st.session_state: st.session_state.price_map = {} # 售價
+if 'cost_map' not in st.session_state: st.session_state.cost_map = {}  # 成本
 
 # --- 預設資料 ---
 DEFAULT_COLORS = ["黑/Hitam", "白/Putih", "灰/Abu", "藍/Biru", "深藍/Biru Tua", "淺藍/Biru Muda", "米色/Krem"]
 DEFAULT_SIZES = ["XS", "S", "M", "L", "XL", "2XL", "3XL"]
 
-# --- 檔案儲存路徑 ---
+# --- 檔案處理 ---
 DATA_FOLDER = "order_records"
-if not os.path.exists(DATA_FOLDER):
-    os.makedirs(DATA_FOLDER)
+if not os.path.exists(DATA_FOLDER): os.makedirs(DATA_FOLDER)
 
-# --- 標題 ---
-st.title("📦 TokoMamanis / Sistem POS Live")
-
-# --- 側邊欄：歷史紀錄讀取 ---
+# ==========================================
+#  側邊欄：價格與檔案
+# ==========================================
 with st.sidebar:
-    st.header("📂 紀錄與存檔 / Arsip")
-    # 存檔功能移到側邊欄，避免佔用主畫面空間
-    st.markdown("### 💾 儲存 / Simpan")
-    today_str = datetime.now().strftime("%Y-%m-%d")
-    files = [f for f in os.listdir(DATA_FOLDER) if f.endswith('.csv')]
-    files.sort(reverse=True)
+    st.header("💰 設定利潤 / Atur Margin")
     
-    existing_today = [f for f in files if f.startswith(today_str)]
-    next_index = len(existing_today) + 1
-    default_filename = f"{today_str}-{next_index}"
+    all_items = sorted(list(set(st.session_state.history_items)))
     
-    save_name = st.text_input("檔名 / Nama File", value=default_filename)
-    if st.button("立即儲存 / Simpan CSV", type="primary"):
-        if st.session_state.orders:
-            df_save = pd.DataFrame(st.session_state.orders)
-            full_path = os.path.join(DATA_FOLDER, f"{save_name}.csv")
-            df_save.to_csv(full_path, index=False)
-            st.toast(f"✅ 已儲存: {save_name}.csv") # 跳出小提示
-            files.insert(0, f"{save_name}.csv") # 假裝更新列表
-        else:
-            st.error("清單是空的 / Kosong")
+    if all_items:
+        st.caption("👇 雙擊修改 / Klik 2x edit")
+        
+        price_data = []
+        for code in all_items:
+            c_price = st.session_state.price_map.get(code, 0)
+            c_cost = st.session_state.cost_map.get(code, 0)
+            price_data.append({
+                "貨號": code, 
+                "成本": c_cost,
+                "售價": c_price,
+                "毛利": c_price - c_cost
+            })
+        
+        df_price = pd.DataFrame(price_data)
+        
+        # 這裡的標題也補上印尼文
+        edited_prices = st.data_editor(
+            df_price, 
+            hide_index=True, 
+            use_container_width=True,
+            column_config={
+                "貨號": st.column_config.TextColumn("貨號 / Kode", disabled=True), 
+                "成本": st.column_config.NumberColumn("成本 / Modal", min_value=0, step=50, format="$%d", required=True),
+                "售價": st.column_config.NumberColumn("售價 / Jual", min_value=0, step=50, format="$%d", required=True),
+                "毛利": st.column_config.NumberColumn("毛利 / Untung", disabled=True, format="$%d") 
+            },
+            key="price_editor",
+            height=300
+        )
+        
+        for index, row in edited_prices.iterrows():
+            st.session_state.price_map[row['貨號']] = row['售價']
+            st.session_state.cost_map[row['貨號']] = row['成本']
+    else:
+        st.info("尚無貨號 / Belum ada kode")
 
     st.markdown("---")
+    st.header("📂 檔案 / File")
     
-    st.markdown("### 📖 讀取舊檔 / Baca File")
-    selected_file = st.selectbox("選擇檔案", ["-- 選擇 / Pilih --"] + files)
-    if selected_file != "-- 選擇 / Pilih --":
-        if st.button("讀取 / Muat"):
-            try:
-                df_load = pd.read_csv(os.path.join(DATA_FOLDER, selected_file))
-                st.session_state.orders = df_load.to_dict('records')
-                # 恢復歷史選項
-                for col, history_list in [("貨號 / Kode", 'history_items'), ("顏色 / Warna", 'history_colors'), ("尺寸 / Ukuran", 'history_sizes')]:
-                    if col in df_load.columns:
-                        existing = df_load[col].unique().tolist()
-                        for item in existing:
-                            if item not in DEFAULT_COLORS and item not in DEFAULT_SIZES and item not in st.session_state[history_list]:
-                                st.session_state[history_list].append(item)
-                st.success("已讀取!")
-                st.rerun()
-            except Exception as e:
-                st.error(f"Error: {e}")
-
-# ==========================================
-#  版面佈局：左邊清單 (55%) | 右邊操作 (45%)
-# ==========================================
-col_list, col_input = st.columns([5.5, 4.5], gap="large")
-
-# ------------------------------------------
-# 左欄：清單顯示區 (監控)
-# ------------------------------------------
-with col_list:
-    st.subheader("📋 已點清單 / Daftar Pesanan")
+    # 存檔與讀檔邏輯
+    today_str = datetime.now(timezone(timedelta(hours=8))).strftime("%Y-%m-%d")
+    files = [f for f in os.listdir(DATA_FOLDER) if f.endswith('.csv')]
+    files.sort(reverse=True)
+    existing_today = [f for f in files if f.startswith(today_str)]
+    default_filename = f"{today_str}-{len(existing_today) + 1}"
     
-    if st.session_state.orders:
-        df = pd.DataFrame(st.session_state.orders)
-        
-        # 1. 顯示統計 (優先顯示統計，方便一眼看總量)
-        with st.expander("📊 點擊查看統計 / Lihat Statistik", expanded=True):
-            if not df.empty:
-                # 簡單的統計表格
-                summary = df.groupby(['貨號 / Kode', '顏色 / Warna', '尺寸 / Ukuran']).size().reset_index(name='數量')
-                st.dataframe(summary, use_container_width=True, height=200)
-
-        # 2. 顯示詳細清單 (可編輯)
-        # height=500 限制高度，這樣在手機上不會佔據整個畫面
-        edited_df = st.data_editor(
-            df,
-            num_rows="dynamic",
-            use_container_width=True,
-            height=500, 
-            key="editor"
-        )
-        
-        # 同步修改內容
-        if not df.equals(edited_df):
-            st.session_state.orders = edited_df.to_dict('records')
+    save_name = st.text_input("檔名 / Nama File", value=default_filename)
+    if st.button("💾 儲存 / Simpan", type="primary", use_container_width=True):
+        if st.session_state.orders:
+            orders_to_save = []
+            for o in st.session_state.orders:
+                o_copy = o.copy()
+                code = o['貨號 / Kode']
+                o_copy['售價 / Jual'] = st.session_state.price_map.get(code, 0)
+                o_copy['成本 / Modal'] = st.session_state.cost_map.get(code, 0)
+                o_copy['毛利 / Laba'] = o_copy['售價 / Jual'] - o_copy['成本 / Modal']
+                orders_to_save.append(o_copy)
+            pd.DataFrame(orders_to_save).to_csv(os.path.join(DATA_FOLDER, f"{save_name}.csv"), index=False)
+            st.toast(f"✅ 已儲存 / Tersimpan: {save_name}.csv")
             st.rerun()
-    else:
-        st.info("☞ (電腦版) 請在右側輸入資料\n\n☟ (手機版) 請在下 方輸入資料")
+            
+    selected_file = st.selectbox("讀取舊檔 / Pilih File Lama", ["-- 選擇 / Pilih --"] + files)
+    if selected_file != "-- 選擇 / Pilih --" and st.button("讀取 / Muat", use_container_width=True):
+        try:
+            df_load = pd.read_csv(os.path.join(DATA_FOLDER, selected_file))
+            st.session_state.orders = df_load.to_dict('records')
+            # 恢復歷史邏輯
+            for col, h_list in [("貨號 / Kode",'history_items'), ("顏色 / Warna",'history_colors'), ("尺寸 / Ukuran",'history_sizes')]:
+                if col in df_load.columns:
+                    for x in df_load[col].unique():
+                        if str(x)!='nan' and x not in DEFAULT_COLORS+DEFAULT_SIZES and x not in st.session_state[h_list]:
+                            st.session_state[h_list].append(x)
+            # 恢復價格
+            if '售價 / Jual' in df_load.columns:
+                 for i, r in df_load.iterrows():
+                    if pd.notna(r['售價 / Jual']): st.session_state.price_map[r['貨號 / Kode']] = int(r['售價 / Jual'])
+                    if pd.notna(r['成本 / Modal']): st.session_state.cost_map[r['貨號 / Kode']] = int(r['成本 / Modal'])
+            st.success("讀取成功 / Berhasil Dimuat!")
+            st.rerun()
+        except Exception as e: st.error(str(e))
 
-# ------------------------------------------
-# 右欄：輸入操作區 (動作)
-# ------------------------------------------
-with col_input:
-    st.subheader("📝 輸入面板 / Input Panel")
+# ==========================================
+#  頂部儀表板 (Dashboard Header)
+# ==========================================
+current_revenue = 0
+current_cost = 0
+for order in st.session_state.orders:
+    code = order['貨號 / Kode']
+    current_revenue += st.session_state.price_map.get(code, 0)
+    current_cost += st.session_state.cost_map.get(code, 0)
+current_profit = current_revenue - current_cost
+
+with st.container():
+    c1, c2, c3, c4 = st.columns([4, 2, 2, 2])
+    with c1:
+        st.markdown("## 📦 TokoMamanis POS")
+        st.caption(f"📅 {today_str} | Live Dashboard")
+    with c2:
+        st.metric("📦 總單量 / Pcs", f"{len(st.session_state.orders)}")
+    with c3:
+        st.metric("💰 總營收 / Omset", f"${current_revenue:,}")
+    with c4:
+        st.metric("💵 總淨利 / Laba", f"${current_profit:,}", delta="Profit" if current_profit > 0 else None)
     
-    # 把它包在一個容器裡，增加視覺區隔
-    with st.container(border=True):
-        
-       # 1. 貨號與客人
-        st.write("🔧 **貨號模式 / Mode Kode**")
-        input_mode = st.radio(
-            "模式選擇", 
-            ["輸入新貨號 / Enter Baru", "選擇舊貨號 / Enter Lama"], 
-            horizontal=True, 
-            label_visibility="collapsed", # 隱藏標題，節省空間
-            key="mode_selection"
-        )
-        
-        c1, c2 = st.columns(2)
-        
-        with c1:
-            # 左邊：貨號輸入
-            if "Enter Lama" in input_mode and st.session_state.history_items:
-                item_code = st.selectbox("貨號 / Kode", st.session_state.history_items)
-            else:
-                item_code = st.text_input("貨號 / Kode", placeholder="9152")
-                
-        with c2:
-            # 右邊：客人名稱 (現在不需要空行了，會自動對齊)
-            customer_name = st.text_input("客人 / Nama", placeholder="Anis")
+    st.divider() 
 
-        # 2. 顏色 (Pills)
-        st.write("🎨 **顏色 / Warna**")
-        color_options = DEFAULT_COLORS + st.session_state.history_colors + ["➕自填other"]
-        selected_color_pill = st.pills("Color", color_options, selection_mode="single", key="color_pill", label_visibility="collapsed")
+# ==========================================
+#  核心操作區 (左右分欄)
+# ==========================================
+col_list, col_input = st.columns([6, 4], gap="medium")
+
+# --- 左欄：清單與表格 ---
+with col_list:
+    tab1, tab2 = st.tabs(["📋 叫貨總表 / List Order (Total)", "📊 詳細統計 / Detail Pesanan"])
+    
+    df = pd.DataFrame(st.session_state.orders)
+    
+    with tab1: # 老闆要看的 (Pivot)
+        if not df.empty:
+            pivot = df.pivot_table(index=['貨號 / Kode', '顏色 / Warna'], columns='尺寸 / Ukuran', aggfunc='size', fill_value=0)
+            # 排序邏輯
+            cols = pivot.columns.tolist()
+            std_cols = [c for c in ["XS","S","M","L","XL","2XL","3XL"] if c in cols]
+            other_cols = [c for c in cols if c not in std_cols]
+            pivot = pivot[std_cols + other_cols]
+            pivot['總量 / Total'] = pivot.sum(axis=1) # 補上雙語
+            st.dataframe(pivot, use_container_width=True, height=500)
+        else:
+            st.info("等待輸入... / Menunggu input")
+
+    with tab2: # 自己看的 (流水帳)
+        if not df.empty:
+            df_show = df.copy()
+            df_show['售價 / Jual'] = df_show['貨號 / Kode'].map(st.session_state.price_map).fillna(0)
+            df_show['成本 / Modal'] = df_show['貨號 / Kode'].map(st.session_state.cost_map).fillna(0)
+            
+            edited_df = st.data_editor(
+                df_show,
+                num_rows="dynamic",
+                use_container_width=True,
+                height=500,
+                key="editor",
+                column_config={
+                    "售價 / Jual": st.column_config.NumberColumn(disabled=True),
+                    "成本 / Modal": st.column_config.NumberColumn(disabled=True)
+                }
+            )
+            if not df.equals(edited_df[df.columns]):
+                st.session_state.orders = edited_df[df.columns].to_dict('records')
+                st.rerun()
+
+# --- 右欄：輸入面板 ---
+with col_input:
+    with st.container(border=True):
+        st.markdown("### 📝 輸入 / Input Panel")
+        
+        # 1. 貨號
+        st.caption("🏷️ **貨號 / Kode**")
+        opts = ["➕新/Baru"] + st.session_state.history_items
+        sel_item = st.pills("Item", opts, selection_mode="single", key="pill_item", label_visibility="collapsed")
+        
+        item_code = ""
+        if sel_item == "➕新/Baru" or sel_item is None:
+             item_code = st.text_input("input_code", placeholder="Contoh: 3", label_visibility="collapsed")
+        else:
+             item_code = sel_item
+             st.success(f"已選 / Terpilih: {item_code}") 
+
+        # 2. 客人
+        st.caption("👤 **客人 / Nama**")
+        customer_name = st.text_input("input_cust", placeholder="Contoh: anis", label_visibility="collapsed")
+
+        st.markdown("---")
+        
+        # 3. 顏色與尺寸
+        st.caption("🎨 **顏色 / Warna**")
+        c_opts = DEFAULT_COLORS + st.session_state.history_colors + ["➕自填/Lainnya"]
+        sel_color = st.pills("Color", c_opts, selection_mode="single", key="pill_color", label_visibility="collapsed")
         
         final_color = None
-        if selected_color_pill == "➕自填other":
-            final_color = st.text_input("輸入新顏色 / Warna Baru")
+        if sel_color == "➕自填/Lainnya":
+            # 補上雙語 Prompt
+            final_color = st.text_input("new_color", placeholder="新顏色 / Warna Baru...", label_visibility="collapsed")
         else:
-            final_color = selected_color_pill
+            final_color = sel_color
 
-        st.markdown("---")
-
-        # 3. 尺寸 (Pills)
-        st.write("📏 **尺寸 / Ukuran**")
-        size_options = DEFAULT_SIZES + st.session_state.history_sizes + ["➕自填other"]
-        selected_size_pill = st.pills("Size", size_options, selection_mode="single", key="size_pill", label_visibility="collapsed")
+        st.caption("📏 **尺寸 / Ukuran**")
+        s_opts = DEFAULT_SIZES + st.session_state.history_sizes + ["➕自填/Lainnya"]
+        sel_size = st.pills("Size", s_opts, selection_mode="single", key="pill_size", label_visibility="collapsed")
         
         final_size = None
-        if selected_size_pill == "➕自填other":
-            final_size = st.text_input("輸入新尺寸 / Ukuran Baru")
+        if sel_size == "➕自填/Lainnya":
+             # 補上雙語 Prompt
+            final_size = st.text_input("new_size", placeholder="新尺寸 / Ukuran Baru...", label_visibility="collapsed")
         else:
-            final_size = selected_size_pill
+            final_size = sel_size
         
         st.markdown("---")
 
-        # 4. 確認按鈕 (特大)
-        if st.button("✅ 確認加入 / TAMBAH", type="primary", use_container_width=True):
-            if item_code and customer_name and final_color and final_size:
-                new_order = {
-                    "貨號 / Kode": item_code,
-                    "客人 / Nama": customer_name,
-                    "顏色 / Warna": final_color,
-                    "尺寸 / Ukuran": final_size,
-                    "時間 / Waktu": datetime.now().strftime("%H:%M:%S")
-                }
-                # 插入到最前面 (這樣最新輸入的會在表格最上面，不用捲動到底部)
-                st.session_state.orders.insert(0, new_order)
-                
-                # 記錄歷史
-                if item_code not in st.session_state.history_items:
-                    st.session_state.history_items.append(item_code)
-                if selected_color_pill == "➕自填" and final_color not in DEFAULT_COLORS:
-                    st.session_state.history_colors.append(final_color)
-                if selected_size_pill == "➕自填" and final_size not in DEFAULT_SIZES:
-                    st.session_state.history_sizes.append(final_size)
-
-                st.success(f"Added: {item_code} / {customer_name}")
-                st.rerun()
-            else:
-                st.error("❌ 資料不完整 / Data Tidak Lengkap")
+        # 按鈕區
+        b1, b2 = st.columns([7, 3])
+        with b1:
+            if st.button("✅ 確認加入 / TAMBAH", type="primary", use_container_width=True):
+                if item_code and customer_name and final_color and final_size:
+                    new_order = {
+                        "貨號 / Kode": item_code,
+                        "客人 / Nama": customer_name,
+                        "顏色 / Warna": final_color,
+                        "尺寸 / Ukuran": final_size,
+                        "時間 / Waktu": get_taiwan_time()
+                    }
+                    st.session_state.orders.insert(0, new_order)
+                    
+                    if item_code not in st.session_state.history_items:
+                        st.session_state.history_items.append(item_code)
+                        if item_code not in st.session_state.price_map: st.session_state.price_map[item_code]=0
+                        if item_code not in st.session_state.cost_map: st.session_state.cost_map[item_code]=0
+                    
+                    if sel_color=="➕自填/Lainnya" and final_color and final_color not in DEFAULT_COLORS: st.session_state.history_colors.append(final_color)
+                    if sel_size=="➕自填/Lainnya" and final_size and final_size not in DEFAULT_SIZES: st.session_state.history_sizes.append(final_size)
+                    
+                    st.rerun()
+                else:
+                    st.error("缺資料 / Data Kurang")
+        
+        with b2:
+            if st.button("↩ 撤銷 / Undo", use_container_width=True):
+                if st.session_state.orders:
+                    st.session_state.orders.pop(0)
+                    st.rerun()
