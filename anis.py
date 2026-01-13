@@ -4,12 +4,12 @@ import os
 from datetime import datetime, timedelta, timezone
 
 # --- 設定頁面 ---
-st.set_page_config(page_title="TokoMamanis POS Pro", layout="wide")
+st.set_page_config(page_title="TokoMamanis POS", layout="wide")
 
-# --- CSS 美化工程 (儀表板風格) ---
+# --- CSS 美化工程 ---
 st.markdown("""
 <style>
-    /* 全域字體優化 */
+    /* 全域字體 */
     .stApp { font-family: 'Heiti TC', sans-serif; }
     
     /* 1. 頂部數據卡片風格 */
@@ -24,7 +24,7 @@ st.markdown("""
     div[data-testid="stMetricLabel"] { font-size: 0.9rem; color: #aaa; }
     div[data-testid="stMetricValue"] { font-size: 1.6rem; color: #4FC3F7; font-weight: bold; }
     
-    /* 2. 按鈕美化 (Pills) */
+    /* 2. 按鈕 (Pills) */
     .stPills button {
         border-radius: 20px !important;
         font-weight: 600 !important;
@@ -33,17 +33,17 @@ st.markdown("""
         font-size: 0.9rem !important;
     }
     
-    /* 3. 輸入面板邊框 */
+    /* 3. 輸入面板外框 */
     div[data-testid="stVerticalBlockBorderWrapper"] {
         border-radius: 12px;
         padding: 10px;
     }
 
-    /* 4. 表格標題顏色 */
+    /* 4. 表格標題 */
     h3 { color: #4FC3F7 !important; font-size: 1.3rem !important; margin-bottom: 0px !important; }
     
-    /* 5. 修正頂部間距，消滅空白 */
-    .block-container { padding-top: 1.5rem; padding-bottom: 3rem; }
+    /* 5. 修正頂部間距 (加大到 4rem，解決切頭問題) */
+    .block-container { padding-top: 4rem; padding-bottom: 3rem; }
     div[data-testid="stVerticalBlock"] { gap: 0.5rem; }
     
     /* 價格表樣式 */
@@ -60,8 +60,8 @@ def get_taiwan_time():
 if 'orders' not in st.session_state: st.session_state.orders = []
 for key in ['history_items', 'history_colors', 'history_sizes']:
     if key not in st.session_state: st.session_state[key] = []
-if 'price_map' not in st.session_state: st.session_state.price_map = {} # 售價
-if 'cost_map' not in st.session_state: st.session_state.cost_map = {}  # 成本
+if 'price_map' not in st.session_state: st.session_state.price_map = {} 
+if 'cost_map' not in st.session_state: st.session_state.cost_map = {} 
 
 # --- 預設資料 ---
 DEFAULT_COLORS = ["黑/Hitam", "白/Putih", "灰/Abu", "藍/Biru", "深藍/Biru Tua", "淺藍/Biru Muda", "米色/Krem"]
@@ -95,7 +95,6 @@ with st.sidebar:
         
         df_price = pd.DataFrame(price_data)
         
-        # 這裡的標題也補上印尼文
         edited_prices = st.data_editor(
             df_price, 
             hide_index=True, 
@@ -119,7 +118,6 @@ with st.sidebar:
     st.markdown("---")
     st.header("📂 檔案 / File")
     
-    # 存檔與讀檔邏輯
     today_str = datetime.now(timezone(timedelta(hours=8))).strftime("%Y-%m-%d")
     files = [f for f in os.listdir(DATA_FOLDER) if f.endswith('.csv')]
     files.sort(reverse=True)
@@ -140,13 +138,15 @@ with st.sidebar:
             pd.DataFrame(orders_to_save).to_csv(os.path.join(DATA_FOLDER, f"{save_name}.csv"), index=False)
             st.toast(f"✅ 已儲存 / Tersimpan: {save_name}.csv")
             st.rerun()
+        else:
+            st.error("清單是空的 / Daftar Kosong")
             
     selected_file = st.selectbox("讀取舊檔 / Pilih File Lama", ["-- 選擇 / Pilih --"] + files)
     if selected_file != "-- 選擇 / Pilih --" and st.button("讀取 / Muat", use_container_width=True):
         try:
             df_load = pd.read_csv(os.path.join(DATA_FOLDER, selected_file))
             st.session_state.orders = df_load.to_dict('records')
-            # 恢復歷史邏輯
+            # 恢復歷史
             for col, h_list in [("貨號 / Kode",'history_items'), ("顏色 / Warna",'history_colors'), ("尺寸 / Ukuran",'history_sizes')]:
                 if col in df_load.columns:
                     for x in df_load[col].unique():
@@ -162,7 +162,7 @@ with st.sidebar:
         except Exception as e: st.error(str(e))
 
 # ==========================================
-#  頂部儀表板 (Dashboard Header)
+#  頂部儀表板 (Header)
 # ==========================================
 current_revenue = 0
 current_cost = 0
@@ -176,7 +176,8 @@ with st.container():
     c1, c2, c3, c4 = st.columns([4, 2, 2, 2])
     with c1:
         st.markdown("## 📦 TokoMamanis POS")
-        st.caption(f"📅 {today_str} | Live Dashboard")
+        # 補上印尼文: Pantauan Live
+        st.caption(f"📅 {today_str} | Pantauan Live")
     with c2:
         st.metric("📦 總單量 / Pcs", f"{len(st.session_state.orders)}")
     with c3:
@@ -184,33 +185,32 @@ with st.container():
     with c4:
         st.metric("💵 總淨利 / Laba", f"${current_profit:,}", delta="Profit" if current_profit > 0 else None)
     
-    st.divider() 
+    st.divider()
 
 # ==========================================
-#  核心操作區 (左右分欄)
+#  核心操作區
 # ==========================================
 col_list, col_input = st.columns([6, 4], gap="medium")
 
-# --- 左欄：清單與表格 ---
+# --- 左欄：表格 ---
 with col_list:
     tab1, tab2 = st.tabs(["📋 叫貨總表 / List Order (Total)", "📊 詳細統計 / Detail Pesanan"])
     
     df = pd.DataFrame(st.session_state.orders)
     
-    with tab1: # 老闆要看的 (Pivot)
+    with tab1: # Pivot
         if not df.empty:
             pivot = df.pivot_table(index=['貨號 / Kode', '顏色 / Warna'], columns='尺寸 / Ukuran', aggfunc='size', fill_value=0)
-            # 排序邏輯
             cols = pivot.columns.tolist()
             std_cols = [c for c in ["XS","S","M","L","XL","2XL","3XL"] if c in cols]
             other_cols = [c for c in cols if c not in std_cols]
             pivot = pivot[std_cols + other_cols]
-            pivot['總量 / Total'] = pivot.sum(axis=1) # 補上雙語
+            pivot['總量 / Total'] = pivot.sum(axis=1)
             st.dataframe(pivot, use_container_width=True, height=500)
         else:
             st.info("等待輸入... / Menunggu input")
 
-    with tab2: # 自己看的 (流水帳)
+    with tab2: # Detail
         if not df.empty:
             df_show = df.copy()
             df_show['售價 / Jual'] = df_show['貨號 / Kode'].map(st.session_state.price_map).fillna(0)
@@ -261,7 +261,6 @@ with col_input:
         
         final_color = None
         if sel_color == "➕自填/Lainnya":
-            # 補上雙語 Prompt
             final_color = st.text_input("new_color", placeholder="新顏色 / Warna Baru...", label_visibility="collapsed")
         else:
             final_color = sel_color
@@ -272,7 +271,6 @@ with col_input:
         
         final_size = None
         if sel_size == "➕自填/Lainnya":
-             # 補上雙語 Prompt
             final_size = st.text_input("new_size", placeholder="新尺寸 / Ukuran Baru...", label_visibility="collapsed")
         else:
             final_size = sel_size
@@ -306,7 +304,8 @@ with col_input:
                     st.error("缺資料 / Data Kurang")
         
         with b2:
-            if st.button("↩ 撤銷 / Undo", use_container_width=True):
+            # 這裡補上了印尼文 Batal
+            if st.button("↩ 撤銷 / Batal", use_container_width=True):
                 if st.session_state.orders:
                     st.session_state.orders.pop(0)
                     st.rerun()
